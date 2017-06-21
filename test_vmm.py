@@ -151,6 +151,8 @@ def summary_plot(tree, gaps, channel, vmm_id) :
 
     c = r.TCanvas("c_pulser_dac_scan_vmm_%s_channel_%d"%(str(vmm_id), int(channel)), "", 800, 600)
     c.SetGrid(1,1)
+    c.SetTickx(1)
+    c.SetTicky(1)
     c.cd()
 
     # first make the full pdo spectrum
