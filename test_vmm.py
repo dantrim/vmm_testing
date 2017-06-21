@@ -207,12 +207,14 @@ def main() :
     parser.add_option("--dac-start", dest="dac_start", default="0")
     parser.add_option("--dac-end", dest="dac_end", default="1023")
     parser.add_option("--vmm-id", dest="vmm_id", default="X")
+    parser.add_option("--channel", dest="spec_chan", default="")
     (options, args) = parser.parse_args()
     input_file = options.input
     step_size = options.step
     dac_start = options.dac_start
     dac_end = options.dac_end
     vmm_id = options.vmm_id
+    spec_chan = options.spec_chan
 
     if vmm_id == "X" :
         print "You must provide a vmm id, exiting"
@@ -232,7 +234,18 @@ def main() :
 
     # get a list of non-empty channels
     channels = channels_tested(chain)
-    #channels = channels[:3]
+
+    if spec_chan != "" :
+        spec_chan = spec_chan.split(",")
+        new_channels = []
+        for ch in channels :
+            if str(ch) in spec_chan :
+                new_channels.append(ch)
+        channels = new_channels
+
+    if len(channels) == 0 :
+        print "No channels found in input file, exiting"
+        sys.exit()
 
     # dictionary of { channel : [list of non-empty pdo codes] }
     present_pdo_dict = get_non_empty_pdo(chain, channels, step_size)
