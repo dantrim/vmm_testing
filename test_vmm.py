@@ -76,7 +76,11 @@ def get_non_empty_pdo(tree, channels, step_size) :
     pdo_dict = {}
     for ich, ch in enumerate(channels) :
         print "get_non_empty_pdo    [%02d/%02d] channel # %d"%(ich+1, len(channels), ch)
-        pdo_dict[ch] = get_pdos(tree, ch)
+        pdo_list = get_pdos(tree, ch)
+        if len(pdo_list) > 0 :
+            pdo_dict[ch] = get_pdos(tree, ch)
+        else :
+            print "get_non_empty_pdo    WARNING List of non-empty PDO codes for channel %d is empty! This channel may be dead -- not considering it further"%ch
     return pdo_dict
 
 def get_gaps(pdo_list) :
@@ -103,6 +107,12 @@ def get_pdo_gaps(pdo_dict, min_gap_size, channels) :
     gap_dict = {}
     for ich, ch in enumerate(channels) :
         print "channel %d"%ch
+
+        # we may have removed some channels from the list
+        try :
+            tmp = pdo_dict[ch]
+        except :
+            continue
         gaps = get_gaps(pdo_dict[ch])
 
         gaps = list(window_ranges(list(gaps)))
@@ -188,7 +198,7 @@ def summary_plot(tree, gaps, channel, vmm_id) :
     mkdir_cmd = "mkdir -p %s"%(str(dir_name))
     subprocess.call(mkdir_cmd, shell=True)
 
-    save_name = "./%s/vmm_pulser_dac_scan_VMM%s_channel%d.png"%(dir_name, str(vmm_id), int(channel))
+    save_name = "./%s/vmm_pulser_dac_scan_VMM_%s_channel%d.png"%(dir_name, str(vmm_id), int(channel))
     c.SaveAs(save_name)
     save_name = save_name.replace(".png",".root")
     c.SaveAs(save_name)
@@ -196,7 +206,14 @@ def summary_plot(tree, gaps, channel, vmm_id) :
 def make_summary_plots(tree, gap_dict, channels, vmm_id) :
 
     for ich, ch in enumerate(channels) :
+
+        # we may have removed some channels from the list
+        try :
+            x = gap_dict[ch]
+        except :
+            continue
         gaps = gap_dict[ch]
+
         summary_plot(tree, gaps, ch, vmm_id)
 
 def main() :
@@ -250,8 +267,15 @@ def main() :
     # dictionary of { channel : [list of non-empty pdo codes] }
     present_pdo_dict = get_non_empty_pdo(chain, channels, step_size)
 
+    if len(present_pdo_dict.keys()) == 0 :
+        print "WARNING No non-empty PDO codes for any channel! Inspect the input file to be sure that everything looks ok. Exiting."
+        sys.exit()
+
     # dictionary of { channel : [ gap bigger than or eqaul to 'min_gap_size' pdo codes ] }
     min_gap_size = 5
+    print 55*"- "
+    print "Minimum gap size considered: 5 PDO codes"
+    print 55*" -"
     pdo_gap_dict = get_pdo_gaps(present_pdo_dict, min_gap_size, channels)
 
     make_summary_plots(chain, pdo_gap_dict, channels, vmm_id)
