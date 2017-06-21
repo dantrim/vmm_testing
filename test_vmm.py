@@ -106,7 +106,7 @@ def get_pdo_gaps(pdo_dict, min_gap_size, channels) :
 
     gap_dict = {}
     for ich, ch in enumerate(channels) :
-        print "channel %d"%ch
+        print " > channel %d"%ch
 
         # we may have removed some channels from the list
         try :
@@ -117,7 +117,7 @@ def get_pdo_gaps(pdo_dict, min_gap_size, channels) :
 
         gaps = list(window_ranges(list(gaps)))
         gaps = [g for g in gaps if ((g[1] - g[0]) >= min_gap_size)]
-        print gaps
+        #print gaps
         gap_dict[ch] = gaps
     return gap_dict
 
