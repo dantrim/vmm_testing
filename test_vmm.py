@@ -137,6 +137,7 @@ def get_non_empty_pdo(tree, channels, step_size) :
 
     pdo_dict = {}
     histo_dict = {}
+    bad_channels = []
     for ich, ch in enumerate(channels) :
         print "get_non_empty_pdo    [%02d/%02d] channel # %d"%(ich+1, len(channels), ch)
         pdo_histo, pdo_list = get_pdos(tree, ch)
@@ -146,7 +147,8 @@ def get_non_empty_pdo(tree, channels, step_size) :
             histo_dict[ch] = pdo_histo
         else :
             print "get_non_empty_pdo    WARNING List of non-empty PDO codes for channel %d is empty! This channel may be dead -- not considering it further"%ch
-    return histo_dict, pdo_dict
+            bad_channels.append(str(ch))
+    return histo_dict, pdo_dict, bad_channels
 
 def get_gaps(pdo_list) :
 
@@ -172,7 +174,7 @@ def get_pdo_gaps(pdo_dict, min_gap_size, channels) :
     gap_dict = {}
     range_dict = {}
     for ich, ch in enumerate(channels) :
-        print " > channel %d"%ch
+        #print " > channel %d"%ch
 
         # we may have removed some channels from the list
         try :
@@ -205,15 +207,21 @@ def make_gap_graph(gap, maxy, highest, lowest) :
         g.SetLineStyle(2)
         g.SetFillColor(0)
         g.SetFillStyle(0)
-    else :
+    elif width != 64 :
         g.SetLineColor(r.kRed)
         g.SetLineWidth(2)
         g.SetLineStyle(1)
         g.SetFillColor(r.kRed)
-        if not in_bulk :
-            g.SetFillStyle(3354)
-        else :
-            g.SetFillStyle(1001)
+        #if not in_bulk :
+        g.SetFillStyle(3354)
+        #else :
+        #    g.SetFillStyle(1001)
+    elif width == 64 :
+        g.SetLineColor(r.kRed)
+        g.SetLineWidth(2)
+        g.SetLineStyle(1)
+        g.SetFillColor(r.kRed)
+        g.SetFillStyle(1001)
 
 
     g.SetPoint(0, gap[0]+3, 0)
@@ -355,10 +363,10 @@ def get_run_params(chain) :
     #rp.Print()
     return rp
 
-def run_html(outdir, vmm_id, open_html_page) :
+def run_html(outdir, vmm_id, open_html_page, n_channels) :
 
     html_filename = "%s/vmm_pdo_scans_%s.html"%(outdir, vmm_id)
-    html_cmd = "./makeplots.sh %s/ %s VMM:%s"%(outdir, html_filename, vmm_id) 
+    html_cmd = "./makeplots.sh %s/ %s 'VMM %s : %d channels'"%(outdir, html_filename, vmm_id, int(n_channels)) 
     subprocess.call(html_cmd, shell=True)
 
     open_cmd = "open %s"%(html_filename)
@@ -420,7 +428,18 @@ def main() :
         sys.exit()
 
     # dictionary of { channel : [list of non-empty pdo codes] }
-    pdo_histo_dict, present_pdo_dict = get_non_empty_pdo(chain, channels, step_size)
+    pdo_histo_dict, present_pdo_dict, bad_channels = get_non_empty_pdo(chain, channels, step_size)
+
+    if len(bad_channels) > 0 :
+
+        bad_channel_list = ",".join(bad_channels)
+        print "Removing bad channels: %s"%bad_channel_list
+
+        new_channels = []
+        for ch in channels :
+            if ch not in bad_channels :
+                new_channels.append(ch)
+        channels = new_channels
 
     if len(present_pdo_dict.keys()) == 0 :
         print "WARNING No non-empty PDO codes for any channel! Inspect the input file to be sure that everything looks ok. Exiting."
@@ -445,7 +464,7 @@ def main() :
     print 55*"-"
 
     open_html = not no_html
-    run_html(os.path.abspath(output_dir), str(vmm_id), open_html)
+    run_html(os.path.abspath(output_dir), str(vmm_id), open_html, len(channels))
 
 
     #x = raw_input("blah")
