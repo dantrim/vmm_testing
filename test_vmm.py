@@ -380,13 +380,14 @@ def run_html(outdir, vmm_id, open_html_page, n_channels) :
 def main() :
 
     parser = OptionParser()
-    parser.add_option("-i", "--input", default="")
-    parser.add_option("--step", default="1")
-    parser.add_option("--dac-start", dest="dac_start", default="0")
-    parser.add_option("--dac-end", dest="dac_end", default="1023")
-    parser.add_option("--vmm-id", dest="vmm_id", default="X")
-    parser.add_option("--channel", dest="spec_chan", default="")
-    parser.add_option("--no-html", action="store_true", default=False)
+    parser.add_option("-i", "--input", default="", help="Input ROOT calib file")
+    parser.add_option("--step", default="1", help="Step size used in the DAC scan")
+    parser.add_option("--dac-start", dest="dac_start", default="0", help="Initial DAC value in the scan")
+    parser.add_option("--dac-end", dest="dac_end", default="1023", help="Final DAC value in the scan")
+    parser.add_option("--vmm-id", dest="vmm_id", default="X", help="VMM serial number printed on the chip")
+    parser.add_option("--channel", dest="spec_chan", default="", help="Choose a set of channels to look at [default: all] (comma separated: e.g., '1,2,3')")
+    parser.add_option("--no-html", action="store_true", default=False, help="Do not open up the HTML plot dump")
+    parser.add_option("--chip-no", dest="chip_no", default="0", help="Choose a specific chip if on a multi-chip board/readout")
     (options, args) = parser.parse_args()
     input_file = options.input
     step_size = options.step
@@ -395,6 +396,7 @@ def main() :
     vmm_id = options.vmm_id
     spec_chan = options.spec_chan
     no_html = options.no_html
+    chip_no = options.chip_no
 
     if vmm_id == "X" :
         print "You must provide a vmm id, exiting"
