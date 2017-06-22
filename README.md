@@ -26,7 +26,7 @@ The python script `test_vmm.py` will take in a calibration ntuple that has the p
 
 ## optional arguments
 * `--channel` : comma separated list (with no spaces) of channel numbers that you want to consider (if you do not provide this argument the script will consider all non-dead channels in the file) [example: `--channel 1,4,6` to analyze VMM channels 1, 4, and 6 only]
-* `--no-html` : do not open up the HTML plot dump at the end of the analysis (this may be useful if you are on a remote machine and opening up a browser would be slow, e.g.)
+* `--no-html` : do not automatically open up the HTML plot dump at the end of the analysis (this may be useful if you are on a remote machine and opening up a browser would be slow, e.g.)
 
 # Example run
 
