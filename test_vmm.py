@@ -32,6 +32,16 @@ class RunParams :
         txt = "gain: %.2f  threshold: %d    peak time: %d    tac: %d"%(float(self.gain), int(self.threshold), int(self.peak_time), int(self.tac))
         return txt
 
+class Gap :
+    def __init__(self, start, stop, text_height) :
+        self.start = start
+        self.stop = stop
+        self.text_height = text_height
+        self.width = (stop - start)
+
+    def description(self) :
+        x = "PDO code gap: start=%d stop=%d width=%d"%(self.start, self.stop, self.width)
+        return x
 
 def channels_tested(tree) :
     """
@@ -188,7 +198,6 @@ def make_gap_graph(gap, maxy, highest, lowest) :
     g.SetLineWidth(2)
 
     in_bulk = ( (gap[1] < 0.95*highest) and (gap[0] > 1.05*lowest) )
-    
 
     if width < 6 :
         g.SetLineColor(r.kRed)
@@ -213,7 +222,14 @@ def make_gap_graph(gap, maxy, highest, lowest) :
     g.SetPoint(3, gap[1]+3, 0)
     g.SetPoint(4, gap[0]+3, 0)
 
-    return g
+    #text = r.TLatex()
+    #text.SetTextSize(0.2*text.GetTextSize())
+    #text.SetTextFont(42)
+    #text.DrawLatex(gap[0]+3, 0.11*maxy, "%d"%width) 
+
+    gap_struct = Gap(gap[0]+3, gap[1]+3, 0.1*maxy)
+
+    return g, gap_struct
 
 def summary_plot(histo, gaps, ranges, channel, vmm_id, run_params, outdir) :
 
@@ -245,13 +261,17 @@ def summary_plot(histo, gaps, ranges, channel, vmm_id, run_params, outdir) :
     h_pdo.GetXaxis().SetLabelSize(0.5*h_pdo.GetXaxis().GetLabelSize())
 
     gap_graphs = []
+    gap_structs = []
     lowest_pdo = ranges[0]
     highest_pdo = ranges[1]
     for g in gaps :
         # don't mark places where we don't expect pdos
         if g[0] <= lowest_pdo : continue
         if g[1] >= highest_pdo : continue
-        gap_graphs.append(make_gap_graph(g, maxy, highest_pdo, lowest_pdo))
+        graph, gap_struct = make_gap_graph(g, maxy, highest_pdo, lowest_pdo)
+        gap_graphs.append(graph)
+        gap_structs.append(gap_struct)
+        #gap_graphs.append(make_gap_graph(g, maxy, highest_pdo, lowest_pdo))
 
     c.cd()
     h_pdo.Draw("hist")
@@ -270,6 +290,15 @@ def summary_plot(histo, gaps, ranges, channel, vmm_id, run_params, outdir) :
     text.DrawLatexNDC(0.12,0.85, header)
     text.DrawLatexNDC(0.12,0.82, vmm)
     c.Update()
+
+    gap_text = r.TLatex()
+    gap_text.SetTextFont(42)
+    gap_text.SetTextSize(0.25*gap_text.GetTextSize())
+    for gap in gap_structs :
+        print "   -> gap found : %s"%gap.description()
+        gap_text.SetTextSize(0.3*text.GetTextSize())
+        gap_text.DrawLatex(gap.start, gap.text_height + 10, "%d"%gap.width)
+        c.Update()
 
     draw_text_on_top(text=run_params.summary_text(), size=0.03)
     c.Update()
@@ -290,7 +319,7 @@ def summary_plot(histo, gaps, ranges, channel, vmm_id, run_params, outdir) :
     subprocess.call(mkdir_cmd, shell=True)
 
     html_save = html_dir + save_name.split("/")[-1]
-    print "HTML save: %s"%html_save
+    #print "HTML save: %s"%html_save
     c.SaveAs(html_save)
 
     # save the ROOT file to store the objects
