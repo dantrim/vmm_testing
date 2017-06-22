@@ -1,14 +1,36 @@
 #!/usr/bin/env python
 
+#ROOT
 import ROOT as r
 r.gROOT.SetBatch(1)
 r.gStyle.SetOptStat(0)
+r.gROOT.ProcessLine( "gErrorIgnoreLevel = 3001;")
 r.PyConfig.IgnoreCommandLineOptions = True
+r.TCanvas.__init__._creates = False
+r.TH1F.__init__._creates = False
 
-import sys
+import sys #exit
 
 from optparse import OptionParser
 import subprocess
+
+class RunParams :
+    """
+    a little struct to hold the run properties
+    """
+    def __init__(self) :
+        self.gain = 0.0
+        self.tac = 0.0
+        self.threshold = 0.0
+        self.peak_time = 0.0
+
+    def Print(self) :
+        print "RunParams    gain: %.2f    tac: %d    threshold: %d    peak_time: %d"%(float(self.gain), int(self.tac), int(self.threshold), int(self.peak_time))
+
+    def summary_text(self) :
+        txt = "gain: %.2f  threshold: %d    peak time: %d    tac: %d"%(float(self.gain), int(self.threshold), int(self.peak_time), int(self.tac))
+        return txt
+
 
 def channels_tested(tree) :
     """
@@ -61,8 +83,37 @@ def get_pdos(tree, channel) :
             #if h.GetBinWidth(ibin) != 1 :
             #    filled_pdo.append(int(filled_pdo[-1]) + int(h.GetBinWidth(ibin)))
             #filled_pdo.append(ibin)
-    return filled_pdo
+    return h, filled_pdo
     
+
+def draw_text(x=0.7, y=0.65, font=42, color=r.kBlack, text="", size=0.04, angle=0.0) :
+    '''
+    Draw text on the current pad
+    (coordinates are normalized to the current pad)
+    '''
+    l = r.TLatex()
+    l.SetTextSize(size)
+    l.SetTextFont(font)
+    l.SetNDC()
+    l.SetTextColor(color)
+    l.SetTextAngle(angle)
+    l.DrawLatex(x, y, text)
+
+def draw_text_on_top(text="", size=0.04, pushright=1.0, pushup=1.0) :
+    """
+    utility method to write text
+    directly above the plot pad
+    """
+
+    s = size
+    t = text
+    top_margin = r.gPad.GetTopMargin()
+    left_margin = r.gPad.GetLeftMargin()
+    xpos = pushright * left_margin
+    ypos = 1.0 - 0.87*top_margin
+    ypos *= pushup
+    #draw_text(x=xpos, y=1.0-0.85*top_margin, text=t, size=s)
+    draw_text(x=xpos, y=ypos, text=t, size=s)
     
 
 def get_non_empty_pdo(tree, channels, step_size) :
@@ -74,14 +125,17 @@ def get_non_empty_pdo(tree, channels, step_size) :
     print "get_non_empty_pdo    (%d channels to test)"%len(channels)
 
     pdo_dict = {}
+    histo_dict = {}
     for ich, ch in enumerate(channels) :
         print "get_non_empty_pdo    [%02d/%02d] channel # %d"%(ich+1, len(channels), ch)
-        pdo_list = get_pdos(tree, ch)
+        pdo_histo, pdo_list = get_pdos(tree, ch)
         if len(pdo_list) > 0 :
-            pdo_dict[ch] = get_pdos(tree, ch)
+            #pdo_dict[ch] = get_pdos(tree, ch)
+            pdo_dict[ch] = pdo_list
+            histo_dict[ch] = pdo_histo
         else :
             print "get_non_empty_pdo    WARNING List of non-empty PDO codes for channel %d is empty! This channel may be dead -- not considering it further"%ch
-    return pdo_dict
+    return histo_dict, pdo_dict
 
 def get_gaps(pdo_list) :
 
@@ -147,7 +201,7 @@ def make_gap_graph(gap, maxy) :
 
     return g
 
-def summary_plot(tree, gaps, channel, vmm_id) :
+def summary_plot(histo, gaps, channel, vmm_id, run_params) :
 
     c = r.TCanvas("c_pulser_dac_scan_vmm_%s_channel_%d"%(str(vmm_id), int(channel)), "", 800, 600)
     c.SetGrid(1,1)
@@ -156,17 +210,20 @@ def summary_plot(tree, gaps, channel, vmm_id) :
     c.cd()
 
     # first make the full pdo spectrum
-    h_pdo = r.TH1F("h_pdo_%d_%s"%(channel, str(vmm_id)), "PDO for VMM %s - Channel %d;pdo [counts];Entries"%(str(vmm_id), int(channel)), 1020, 0, 1020)
+    h_pdo = histo #r.TH1F("h_pdo_%d_%s"%(channel, str(vmm_id)), "PDO for VMM %s - Channel %d;pdo [counts];Entries"%(str(vmm_id), int(channel)), 1020, 0, 1020)
+    h_pdo.SetTitle("PDO for VMM %s - Channel %d"%(str(vmm_id), int(channel)))
+    h_pdo.GetXaxis().SetTitle("pdo [counts]")
+    h_pdo.GetYaxis().SetTitle("Entries")
     h_pdo.SetLineColor(r.kBlack)
     h_pdo.SetFillColor(38)
     h_pdo.Sumw2()
 
-    cmd = "pdo>>%s"%h_pdo.GetName()
-    cut = "channel==%d"%channel
-    cut = r.TCut(cut)
-    sel = r.TCut("1")
-    tree.Draw(cmd, cut * sel, "goff")
-    h_pdo.Draw("hist")
+    #cmd = "pdo>>%s"%h_pdo.GetName()
+    #cut = "channel==%d"%channel
+    #cut = r.TCut(cut)
+    #sel = r.TCut("1")
+    #tree.Draw(cmd, cut * sel, "goff")
+    #h_pdo.Draw("hist")
 
     maxy = h_pdo.GetMaximum()
     h_pdo.SetMaximum(1.1*maxy)
@@ -191,8 +248,11 @@ def summary_plot(tree, gaps, channel, vmm_id) :
 
     header = "#bf{ATLAS} #it{Preliminary}"
     vmm = "#bf{VMM3} - ID %s - Channel %d"%(str(vmm_id), int(channel))
-    text.DrawLatex(35,maxy, header)
-    text.DrawLatex(35,0.95*maxy, vmm)
+    text.DrawLatexNDC(0.12,0.85, header)
+    text.DrawLatexNDC(0.12,0.82, vmm)
+    c.Update()
+
+    draw_text_on_top(text=run_params.summary_text(), size=0.03)
     c.Update()
 
     
@@ -205,7 +265,7 @@ def summary_plot(tree, gaps, channel, vmm_id) :
     save_name = save_name.replace(".png",".root")
     c.SaveAs(save_name)
 
-def make_summary_plots(tree, gap_dict, channels, vmm_id) :
+def make_summary_plots(histo_dict, gap_dict, channels, vmm_id, run_params) :
 
     for ich, ch in enumerate(channels) :
 
@@ -216,7 +276,22 @@ def make_summary_plots(tree, gap_dict, channels, vmm_id) :
             continue
         gaps = gap_dict[ch]
 
-        summary_plot(tree, gaps, ch, vmm_id)
+        summary_plot(histo_dict[ch], gaps, ch, vmm_id, run_params)
+
+def get_run_params(chain) :
+    """
+    fill run properties struct using
+    first event in the input chain
+    """
+    rp = RunParams()
+    for ievent, event in enumerate(chain) :
+        if ievent >=1 : break
+        rp.gain = event.gain
+        rp.tac = event.tacSlope
+        rp.threshold = event.dacCounts
+        rp.peak_time = event.peakTime
+    #rp.Print()
+    return rp
 
 def main() :
 
@@ -267,7 +342,7 @@ def main() :
         sys.exit()
 
     # dictionary of { channel : [list of non-empty pdo codes] }
-    present_pdo_dict = get_non_empty_pdo(chain, channels, step_size)
+    pdo_histo_dict, present_pdo_dict = get_non_empty_pdo(chain, channels, step_size)
 
     if len(present_pdo_dict.keys()) == 0 :
         print "WARNING No non-empty PDO codes for any channel! Inspect the input file to be sure that everything looks ok. Exiting."
@@ -280,8 +355,9 @@ def main() :
     print 55*" -"
     pdo_gap_dict = get_pdo_gaps(present_pdo_dict, min_gap_size, channels)
 
-    make_summary_plots(chain, pdo_gap_dict, channels, vmm_id)
+    run_params = get_run_params(chain)
 
+    make_summary_plots(pdo_histo_dict, pdo_gap_dict, channels, vmm_id, run_params)
 
 #_______________________________________
 if __name__ == "__main__" :
