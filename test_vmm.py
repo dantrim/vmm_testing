@@ -10,6 +10,7 @@ r.TCanvas.__init__._creates = False
 r.TH1F.__init__._creates = False
 
 import sys #exit
+import os #abspath
 
 from optparse import OptionParser
 import subprocess
@@ -159,6 +160,7 @@ def get_pdo_gaps(pdo_dict, min_gap_size, channels) :
     print "get_pdo_gaps"
 
     gap_dict = {}
+    range_dict = {}
     for ich, ch in enumerate(channels) :
         print " > channel %d"%ch
 
@@ -167,41 +169,53 @@ def get_pdo_gaps(pdo_dict, min_gap_size, channels) :
             tmp = pdo_dict[ch]
         except :
             continue
+
+        sorted_pdos = sorted(pdo_dict[ch])
+        range_dict[ch] = [sorted_pdos[0], sorted_pdos[-1]]
+    
         gaps = get_gaps(pdo_dict[ch])
 
         gaps = list(window_ranges(list(gaps)))
         gaps = [g for g in gaps if ((g[1] - g[0]) >= min_gap_size)]
         #print gaps
         gap_dict[ch] = gaps
-    return gap_dict
+    return gap_dict, range_dict
 
-def make_gap_graph(gap, maxy) :
-
-    
+def make_gap_graph(gap, maxy, highest, lowest) :
     g = r.TGraph(5)
 
     width = int(gap[1] - gap[0])
     g.SetLineWidth(2)
+
+    in_bulk = ( (gap[1] < 0.95*highest) and (gap[0] > 1.05*lowest) )
+    
+
     if width < 6 :
         g.SetLineColor(r.kRed)
         g.SetLineWidth(1)
         g.SetLineStyle(2)
         g.SetFillColor(0)
+        g.SetFillStyle(0)
     else :
         g.SetLineColor(r.kRed)
         g.SetLineWidth(2)
         g.SetLineStyle(1)
         g.SetFillColor(r.kRed)
+        if not in_bulk :
+            g.SetFillStyle(3354)
+        else :
+            g.SetFillStyle(1001)
 
-    g.SetPoint(0, gap[0], 0)
-    g.SetPoint(1, gap[0], 0.1*maxy)
-    g.SetPoint(2, gap[1], 0.1*maxy)
-    g.SetPoint(3, gap[1], 0)
-    g.SetPoint(4, gap[0], 0)
+
+    g.SetPoint(0, gap[0]+3, 0)
+    g.SetPoint(1, gap[0]+3, 0.1*maxy)
+    g.SetPoint(2, gap[1]+3, 0.1*maxy)
+    g.SetPoint(3, gap[1]+3, 0)
+    g.SetPoint(4, gap[0]+3, 0)
 
     return g
 
-def summary_plot(histo, gaps, channel, vmm_id, run_params) :
+def summary_plot(histo, gaps, ranges, channel, vmm_id, run_params, outdir) :
 
     c = r.TCanvas("c_pulser_dac_scan_vmm_%s_channel_%d"%(str(vmm_id), int(channel)), "", 800, 600)
     c.SetGrid(1,1)
@@ -231,8 +245,13 @@ def summary_plot(histo, gaps, channel, vmm_id, run_params) :
     h_pdo.GetXaxis().SetLabelSize(0.5*h_pdo.GetXaxis().GetLabelSize())
 
     gap_graphs = []
+    lowest_pdo = ranges[0]
+    highest_pdo = ranges[1]
     for g in gaps :
-        gap_graphs.append(make_gap_graph(g, maxy))
+        # don't mark places where we don't expect pdos
+        if g[0] <= lowest_pdo : continue
+        if g[1] >= highest_pdo : continue
+        gap_graphs.append(make_gap_graph(g, maxy, highest_pdo, lowest_pdo))
 
     c.cd()
     h_pdo.Draw("hist")
@@ -256,16 +275,30 @@ def summary_plot(histo, gaps, channel, vmm_id, run_params) :
     c.Update()
 
     
-    dir_name = "vmm_scans_%s"%(str(vmm_id))
+    #dir_name = "vmm_scans_%s"%(str(vmm_id))
+    dir_name = outdir
     mkdir_cmd = "mkdir -p %s"%(str(dir_name))
     subprocess.call(mkdir_cmd, shell=True)
 
-    save_name = "./%s/vmm_pulser_dac_scan_VMM_%s_channel%d.png"%(dir_name, str(vmm_id), int(channel))
+    save_name = "./%s/vmm_pulser_dac_scan_VMM_%s_channel%d.eps"%(dir_name, str(vmm_id), int(channel))
     c.SaveAs(save_name)
+
+    # save for html (only renders png ??)
+    save_name = save_name.replace(".eps",".png")
+    html_dir = "./" + dir_name + "/for_html/" 
+    mkdir_cmd = "mkdir -p %s"%(str(html_dir))
+    subprocess.call(mkdir_cmd, shell=True)
+
+    html_save = html_dir + save_name.split("/")[-1]
+    print "HTML save: %s"%html_save
+    c.SaveAs(html_save)
+
+    # save the ROOT file to store the objects
     save_name = save_name.replace(".png",".root")
     c.SaveAs(save_name)
 
-def make_summary_plots(histo_dict, gap_dict, channels, vmm_id, run_params) :
+
+def make_summary_plots(histo_dict, gap_dict, range_dict, channels, vmm_id, run_params, outdir) :
 
     for ich, ch in enumerate(channels) :
 
@@ -276,7 +309,7 @@ def make_summary_plots(histo_dict, gap_dict, channels, vmm_id, run_params) :
             continue
         gaps = gap_dict[ch]
 
-        summary_plot(histo_dict[ch], gaps, ch, vmm_id, run_params)
+        summary_plot(histo_dict[ch], gaps, range_dict[ch], ch, vmm_id, run_params, outdir)
 
 def get_run_params(chain) :
     """
@@ -293,6 +326,20 @@ def get_run_params(chain) :
     #rp.Print()
     return rp
 
+def run_html(outdir, vmm_id, open_html_page) :
+
+    html_filename = "%s/vmm_pdo_scans_%s.html"%(outdir, vmm_id)
+    html_cmd = "./makeplots.sh %s/ %s VMM:%s"%(outdir, html_filename, vmm_id) 
+    subprocess.call(html_cmd, shell=True)
+
+    open_cmd = "open %s"%(html_filename)
+    if open_html_page :
+        if os.path.exists(html_filename) :
+            print "Opening HTML plot dump..."
+            subprocess.call(open_cmd, shell=True)
+        else :
+            print "run_html    HTML file was not found!"
+
 def main() :
 
     parser = OptionParser()
@@ -302,6 +349,7 @@ def main() :
     parser.add_option("--dac-end", dest="dac_end", default="1023")
     parser.add_option("--vmm-id", dest="vmm_id", default="X")
     parser.add_option("--channel", dest="spec_chan", default="")
+    parser.add_option("--no-html", action="store_true", default=False)
     (options, args) = parser.parse_args()
     input_file = options.input
     step_size = options.step
@@ -309,6 +357,7 @@ def main() :
     dac_end = options.dac_end
     vmm_id = options.vmm_id
     spec_chan = options.spec_chan
+    no_html = options.no_html
 
     if vmm_id == "X" :
         print "You must provide a vmm id, exiting"
@@ -353,11 +402,24 @@ def main() :
     print 55*"- "
     print "Minimum gap size considered: 5 PDO codes"
     print 55*" -"
-    pdo_gap_dict = get_pdo_gaps(present_pdo_dict, min_gap_size, channels)
+    pdo_gap_dict, pdo_range_dict = get_pdo_gaps(present_pdo_dict, min_gap_size, channels)
 
     run_params = get_run_params(chain)
 
-    make_summary_plots(pdo_histo_dict, pdo_gap_dict, channels, vmm_id, run_params)
+    # where to dump the output plots and root files
+    output_dir = "vmm_pdo_scans_%s"%str(vmm_id)
+
+    make_summary_plots(pdo_histo_dict, pdo_gap_dict, pdo_range_dict, channels, vmm_id, run_params, output_dir)
+
+    print 55*"-"
+    print "Output plots and root files saved to: %s"%os.path.abspath(output_dir)
+    print 55*"-"
+
+    open_html = not no_html
+    run_html(os.path.abspath(output_dir), str(vmm_id), open_html)
+
+
+    #x = raw_input("blah")
 
 #_______________________________________
 if __name__ == "__main__" :
