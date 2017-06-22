@@ -4,8 +4,8 @@
 import ROOT as r
 r.gROOT.SetBatch(1)
 r.gStyle.SetOptStat(0)
-r.gROOT.ProcessLine( "gErrorIgnoreLevel = 3001;")
 r.PyConfig.IgnoreCommandLineOptions = True
+r.gROOT.ProcessLine( "gErrorIgnoreLevel = 3001;")
 r.TCanvas.__init__._creates = False
 r.TH1F.__init__._creates = False
 
@@ -295,7 +295,7 @@ def summary_plot(histo, gaps, ranges, channel, vmm_id, run_params, outdir) :
     gap_text.SetTextFont(42)
     gap_text.SetTextSize(0.25*gap_text.GetTextSize())
     for gap in gap_structs :
-        print "   -> gap found : %s"%gap.description()
+        #print "   -> gap found : %s"%gap.description()
         gap_text.SetTextSize(0.3*text.GetTextSize())
         gap_text.DrawLatex(gap.start, gap.text_height + 10, "%d"%gap.width)
         c.Update()
