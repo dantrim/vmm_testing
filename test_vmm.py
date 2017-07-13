@@ -2,18 +2,23 @@
 
 #ROOT
 import ROOT as r
-r.gROOT.SetBatch(1)
-r.gStyle.SetOptStat(0)
 r.PyConfig.IgnoreCommandLineOptions = True
 r.gROOT.ProcessLine( "gErrorIgnoreLevel = 3001;")
+r.gROOT.SetBatch(1)
+r.gStyle.SetOptStat(0)
 r.TCanvas.__init__._creates = False
 r.TH1F.__init__._creates = False
 
 import sys #exit
 import os #abspath
+import glob # for globbing
 
 from optparse import OptionParser
 import subprocess
+
+class HistoHolder :
+    def __init__(self) :
+        self.histo = None
 
 class RunParams :
     """
@@ -96,6 +101,39 @@ def get_pdos(tree, channel) :
             #filled_pdo.append(ibin)
     return h, filled_pdo
     
+def get_cached_pdos(cache_dir, channel) :
+
+    rootfiles = glob.glob(cache_dir + "*.root")
+    file_to_use = None
+    if len(rootfiles) > 1 :
+        for i in xrange(100) :
+            for f in rootfiles :
+                if "_%d.root"%i in f :
+                    file_to_use = f
+    elif len(rootfiles) == 1 :
+        file_to_use = rootfiles[0]
+    else :
+        print "ERROR No cached root files found in directory %s"%cache_dir
+        sys.exit()
+
+    rfile = r.TFile.Open(file_to_use)
+    #raw_pdo_scan_vmm_%s_channel_%d"%(vmm_id, int(ch))
+    #raw_pdo_scan_channel_%d
+    hname = "raw_pdo_scan_channel_%d"%channel 
+    histo = rfile.Get(hname)
+
+    if not histo :
+        print "ERROR No cached histogram in %s for VMM channel %d"%(cache_dir, channel)
+        sys.exit()
+
+    filled_pdo = []
+    n_bins = histo.GetNbinsX()
+    for ibin in xrange(n_bins) :
+        is_filled = (int(histo.GetBinContent(ibin+1)) > 0)
+        if is_filled :
+            filled_pdo.append(int(histo.GetBinLowEdge(ibin)))
+
+    return histo, filled_pdo
 
 def draw_text(x=0.7, y=0.65, font=42, color=r.kBlack, text="", size=0.04, angle=0.0) :
     '''
@@ -127,7 +165,7 @@ def draw_text_on_top(text="", size=0.04, pushright=1.0, pushup=1.0) :
     draw_text(x=xpos, y=ypos, text=t, size=s)
     
 
-def get_non_empty_pdo(tree, channels, step_size) :
+def get_non_empty_pdo(tree, channels, step_size, use_cached_histos = False, cache_dir = "" ) :
     """
     loops over the pdo distribution
     and finds non-empty codes
@@ -140,14 +178,27 @@ def get_non_empty_pdo(tree, channels, step_size) :
     bad_channels = []
     for ich, ch in enumerate(channels) :
         print "get_non_empty_pdo    [%02d/%02d] channel # %d"%(ich+1, len(channels), ch)
-        pdo_histo, pdo_list = get_pdos(tree, ch)
-        if len(pdo_list) > 0 :
-            #pdo_dict[ch] = get_pdos(tree, ch)
-            pdo_dict[ch] = pdo_list
-            histo_dict[ch] = pdo_histo
+        pdo_histo = None
+        pdo_list = []
+
+        if not use_cached_histos :
+            pdo_histo, pdo_list = get_pdos(tree, ch)
+            if len(pdo_list) > 0 :
+                #pdo_dict[ch] = get_pdos(tree, ch)
+                pdo_dict[ch] = pdo_list
+                histo_dict[ch] = pdo_histo
+            else :
+                print "get_non_empty_pdo    WARNING List of non-empty PDO codes for channel %d is empty! This channel may be dead -- not considering it further"%ch
+                bad_channels.append(str(ch))
         else :
-            print "get_non_empty_pdo    WARNING List of non-empty PDO codes for channel %d is empty! This channel may be dead -- not considering it further"%ch
-            bad_channels.append(str(ch))
+            pdo_histo, pdo_list = get_cached_pdos(cache_dir, ch)
+            if len(pdo_list) > 0 :
+                pdo_dict[ch] = pdo_list
+                histo_dict[ch] = pdo_histo
+            else :
+                print "get_non_empty_pdo    WARNING List of non-empty PDO codes for channel %d is empty! This channel may be dead -- not considering it further"%ch
+                bad_channels.append(str(ch))
+
     return histo_dict, pdo_dict, bad_channels
 
 def get_gaps(pdo_list) :
@@ -295,7 +346,7 @@ def summary_plot(histo, gaps, ranges, channel, vmm_id, run_params, outdir) :
 
     header = "#bf{ATLAS} #it{Preliminary}"
     vmm = "#bf{VMM3} - ID %s - Channel %d"%(str(vmm_id), int(channel))
-    text.DrawLatexNDC(0.12,0.85, header)
+    #text.DrawLatexNDC(0.12,0.85, header)
     text.DrawLatexNDC(0.12,0.82, vmm)
     c.Update()
 
@@ -377,6 +428,40 @@ def run_html(outdir, vmm_id, open_html_page, n_channels) :
         else :
             print "run_html    HTML file was not found!"
 
+def store_raw_pdo_histograms(vmm_id, histogram_dict) :
+
+    outdir = "./vmm_pdo_scans_%s/pdo_histos/"%vmm_id
+    #outdir_orig = outdir
+    #outdir_test = outdir
+
+    suffix = ""
+    #attempt = 0
+    #while os.path.isfile(outdir_test) :
+    #    attempt += 1 
+    #    outdir_test = "%s_%d"%(outdir_orig, attempt)
+    #if attempt > 0 :
+    #    suffix = "_%d"%attempt
+
+    #outdir += suffix
+    #outdir += "/"
+
+    print "Storing raw pdo histogram to: %s"%outdir 
+
+    mkdir_cmd = "mkdir -p %s"%outdir
+    subprocess.call(mkdir_cmd, shell=True)
+
+    histofilename = "%sraw_pdos_vmm_%s%s.root"%(outdir, vmm_id, suffix)
+
+    rfile = r.TFile.Open(histofilename, "RECREATE")
+    rfile.cd()
+
+    for ch, histo in histogram_dict.iteritems() :
+        outname = "raw_pdo_scan_channel_%d"%(int(ch))
+        h_save = histo.Clone(outname)
+        h_save.Print()
+        h_save.Write()
+    rfile.Write()
+
 def main() :
 
     parser = OptionParser()
@@ -414,6 +499,15 @@ def main() :
     chain = r.TChain("calib")
     chain.AddFile(input_file) 
 
+    pdo_histo_check_dir = "./vmm_pdo_scans_%s/pdo_histos/"%vmm_id
+    use_stored_pdo_histos = False
+    if os.path.isdir(pdo_histo_check_dir) :
+        x = raw_input("Found existing raw pdo histo dir (%s), use PDO histograms from here rather than re-build them? [y/n] "%pdo_histo_check_dir)
+        if x.lower() == "y" :
+            use_stored_pdo_histos = True
+        elif x.lower() == "n" :
+            use_stored_pdo_histos = False
+
     # get a list of non-empty channels
     channels = channels_tested(chain)
 
@@ -429,8 +523,14 @@ def main() :
         print "No channels found in input file, exiting"
         sys.exit()
 
+    pdo_histo_dict = {}
+    present_pdo_dict = {}
+    bad_channels = []
     # dictionary of { channel : [list of non-empty pdo codes] }
-    pdo_histo_dict, present_pdo_dict, bad_channels = get_non_empty_pdo(chain, channels, step_size)
+    pdo_histo_dict, present_pdo_dict, bad_channels = get_non_empty_pdo(chain, channels, step_size, use_stored_pdo_histos, pdo_histo_check_dir)
+
+    if not use_stored_pdo_histos :
+        store_raw_pdo_histograms(vmm_id, pdo_histo_dict)
 
     if len(bad_channels) > 0 :
 
