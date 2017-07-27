@@ -133,6 +133,12 @@ def get_cached_pdos(cache_dir, channel) :
         if is_filled :
             filled_pdo.append(int(histo.GetBinLowEdge(ibin)))
 
+    rfile.Close()
+
+    r.gDirectory.cd(".")
+
+    print "before: "
+    histo.Print()
     return histo, filled_pdo
 
 def draw_text(x=0.7, y=0.65, font=42, color=r.kBlack, text="", size=0.04, angle=0.0) :
@@ -192,6 +198,9 @@ def get_non_empty_pdo(tree, channels, step_size, use_cached_histos = False, cach
                 bad_channels.append(str(ch))
         else :
             pdo_histo, pdo_list = get_cached_pdos(cache_dir, ch)
+            print "after: "
+            pdo_histo.Print()
+            sys.exit()
             if len(pdo_list) > 0 :
                 pdo_dict[ch] = pdo_list
                 histo_dict[ch] = pdo_histo
@@ -525,6 +534,8 @@ def main() :
 
     pdo_histo_dict = {}
     present_pdo_dict = {}
+
+    
     bad_channels = []
     # dictionary of { channel : [list of non-empty pdo codes] }
     pdo_histo_dict, present_pdo_dict, bad_channels = get_non_empty_pdo(chain, channels, step_size, use_stored_pdo_histos, pdo_histo_check_dir)
