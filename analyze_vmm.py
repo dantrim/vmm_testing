@@ -4,6 +4,7 @@ from optparse import OptionParser
 
 import sys
 import os
+import subprocess
 
 import ROOT as r
 r.PyConfig.IgnoreCommandLineOptions = True
@@ -720,6 +721,11 @@ def main() :
     print "Analyzing data from VMM %s"%vmm_id
 
     output_dir = "./vmm_pdo_scans_%s/"%vmm_id
+
+    if not os.path.isdir(output_dir) :
+        print "Creating output directory : %s"%output_dir
+        mkdir_cmd = "mkdir -p %s"%output_dir
+        subprocess.call(mkdir_cmd, shell=True)
 
     pdo_dump_file = get_dump_file(vmm_id)
     rfile = r.TFile.Open(pdo_dump_file)
